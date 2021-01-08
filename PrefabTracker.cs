@@ -61,13 +61,9 @@ public class PrefabTrackerWindow : EditorWindow
     public static readonly string[] TypeNames =
         SearchTypes.Select(t => t.Name).ToArray();
 
-    private int _sourceCount;
-    private Dictionary<string, Queue<string>> _sourceMapping;
-
     private string _targetGuid;
     private Object _target;
-    private Dictionary<string, List<Object>> _resultMapping = 
-        new Dictionary<string, List<Object>>();
+    private Dictionary<string, List<Object>> _resultMapping;
 
     private Vector2 _position;
     private Dictionary<string, bool> _foldOutStates = 
@@ -83,16 +79,50 @@ public class PrefabTrackerWindow : EditorWindow
         foreach (var type in SearchTypes)
             _foldOutStates[type.Name] = false;
 
-        _sourceMapping = PrefabTracker.FindTypeFiles(SearchTypes);
-        _sourceCount = _sourceMapping.Sum(q => q.Value.Count);
+        var sourceMapping = PrefabTracker.FindTypeFiles(SearchTypes);
+        var sourceCount = sourceMapping.Sum(q => q.Value.Count);
+
+        _resultMapping = new Dictionary<string, List<Object>>();
+        int count = 0;
+        EditorUtility.DisplayProgressBar("Searching..", $"0/{sourceCount}", 0);
+        foreach (var pair in sourceMapping)
+        {
+            var mapping = pair.Value;
+            var list = new List<Object>();
+            _resultMapping[pair.Key] = list;
+            while (mapping.Count != 0)
+            {
+                string line;
+                bool foundGuid = false;
+                var file = mapping.Dequeue();
+                using (var reader = new StreamReader(file))
+                {
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        if (!line.Contains(_targetGuid))
+                            continue;
+                        foundGuid = true;
+                        break;
+                    }
+                }
+
+                if (foundGuid)
+                    list.Add(AssetDatabase.LoadAssetAtPath<Object>(file));
+                count++;
+
+                EditorUtility.DisplayProgressBar(
+                    "Searching..",
+                    $"{count}/{sourceCount}",
+                    (float)count / sourceCount);
+
+                Thread.Sleep(10);
+            }
+        }
+        EditorUtility.ClearProgressBar();
     }
 
     private void OnGUI()
     {
-        if (_sourceMapping == null)
-            return;
-        Filt();
-
         GUI.enabled = false;
         EditorGUILayout.ObjectField(_target.name, _target, typeof(GameObject), false);
         GUI.enabled = true;
@@ -101,57 +131,6 @@ public class PrefabTrackerWindow : EditorWindow
         foreach(var type in SearchTypes)
             DrawTypeResult(type);
         EditorGUILayout.EndScrollView();
-    }
-
-    private void Filt()
-    {
-        if (_sourceMapping.Count != 0)
-        {
-            _resultMapping.Clear();
-            int count = 0;
-            EditorUtility.DisplayProgressBar("Searching..", $"0/{_sourceCount}", 0);
-            try
-            {
-                while (count < _sourceCount)
-                {
-                    foreach (var pair in _sourceMapping)
-                    {
-                        var mapping = pair.Value;
-                        var list = new List<Object>();
-                        _resultMapping[pair.Key] = list;
-                        while (mapping.Count != 0)
-                        {
-                            string line;
-                            bool foundGuid = false;
-                            var file = mapping.Dequeue();
-                            using (var reader = new StreamReader(file))
-                            {
-                                while ((line = reader.ReadLine()) != null)
-                                {
-                                    if (!line.Contains(_targetGuid))
-                                        continue;
-                                    foundGuid = true;
-                                    break;
-                                }
-                            }
-
-                            if (foundGuid)
-                                list.Add(AssetDatabase.LoadAssetAtPath<Object>(file));
-                            count++;
-                            EditorUtility.DisplayProgressBar("Searching..", $"{count}/{_sourceCount}", (float)count / _sourceCount);
-                            Thread.Sleep(10);
-                        }
-                    }
-                }
-            }
-            catch 
-            {
-
-            }
-            EditorUtility.ClearProgressBar();
-
-            _sourceMapping.Clear();
-        }
     }
 
     private void DrawTypeResult(Type type)
