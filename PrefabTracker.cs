@@ -1,3 +1,7 @@
+// Editor: Ovan741852
+// right click on prefab, CustomTools/Prefab/PrefabTracker
+// show those asset which include the right clicked prefab
+// SearchTypes define the search target types
 using System;
 using System.IO;
 using System.Threading;
